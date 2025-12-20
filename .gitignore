@@ -1,0 +1,84 @@
+
+# -----------------------------
+# Python bytecode & cache
+# -----------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+venv/
+.venv/
+env/
+ENV/
+.virtualenv/
+
+# -----------------------------
+# Environment variables
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# Flask specific
+# -----------------------------
+instance/
+.webassets-cache
+.flaskenv
+
+# -----------------------------
+# Logs & databases
+# -----------------------------
+*.log
+*.sqlite3
+*.db
+
+# -----------------------------
+# Migrations / build artifacts
+# -----------------------------
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# -----------------------------
+# Testing / coverage
+# -----------------------------
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# -----------------------------
+# Jupyter / IPython
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# IDEs & editors
+# -----------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Node (if frontend/build tools used)
+# -----------------------------
+node_modules/
+
+# -----------------------------
+# Docker
+# -----------------------------
+*.pid
