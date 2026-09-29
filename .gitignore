@@ -35,6 +35,9 @@ instance/
 *.log
 *.sqlite3
 *.db
+*.db-wal
+*.db-shm
+storage/
 
 # -----------------------------
 # Migrations / build artifacts

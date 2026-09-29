@@ -1,0 +1,1 @@
+(()=>{const b=document.querySelector('#copy-link'),i=document.querySelector('#share-link');b?.addEventListener('click',async()=>{await navigator.clipboard.writeText(i.value);b.textContent='Copied'})})();
