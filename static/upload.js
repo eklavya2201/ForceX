@@ -1,0 +1,15 @@
+(()=>{
+  const form=document.querySelector('#upload-form');if(!form)return;
+  const files=document.querySelector('#files'),folder=document.querySelector('#folder'),zone=document.querySelector('#upload-zone');
+  const selection=document.querySelector('#selection'),sizeLabel=document.querySelector('#size-label'),listNode=document.querySelector('#file-list');
+  const progressWrap=document.querySelector('#progress-wrap'),progress=document.querySelector('#progress'),button=document.querySelector('#create-button');
+  let selected=null,selectedFromFolder=false;
+  const formatSize=n=>n<1048576?`${(n/1024).toFixed(0)} KB`:`${(n/1048576).toFixed(2)} MB`;
+  const render=()=>{const list=selected||[];const total=list.reduce((n,f)=>n+f.size,0);selection.textContent=list.length?`${list.length} file${list.length===1?'':'s'} selected`:'No content selected';sizeLabel.textContent=formatSize(total);listNode.innerHTML='';list.slice(0,5).forEach(f=>{const chip=document.createElement('span');chip.className='file-chip';chip.textContent=f.webkitRelativePath||f.name;chip.title=chip.textContent;listNode.append(chip)});if(list.length>5){const more=document.createElement('span');more.className='file-chip';more.textContent=`+${list.length-5} more`;listNode.append(more)}listNode.classList.toggle('is-hidden',!list.length)};
+  files.addEventListener('change',()=>{selected=Array.from(files.files);selectedFromFolder=false;folder.value='';render()});
+  folder.addEventListener('change',()=>{selected=Array.from(folder.files);selectedFromFolder=true;files.value='';render()});
+  ['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('dragover')}));
+  ['dragleave','drop'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.remove('dragover')}));
+  zone.addEventListener('drop',e=>{const incoming=Array.from(e.dataTransfer.files||[]);if(incoming.length){selected=incoming;selectedFromFolder=false;files.value='';render()}});
+  form.addEventListener('submit',e=>{if(!selected?.length){e.preventDefault();selection.textContent='Choose files or a folder first';return}const total=selected.reduce((n,f)=>n+f.size,0);if(total>500*1024*1024){e.preventDefault();selection.textContent='Selected files exceed the 500 MB limit';return}e.preventDefault();button.disabled=true;button.textContent='Encrypting transfer…';const fd=new FormData(form);fd.delete('files');fd.delete('paths');for(const f of selected){fd.append('files',f,f.name);fd.append('paths',selectedFromFolder&&f.webkitRelativePath?f.webkitRelativePath:f.name)}const xhr=new XMLHttpRequest();xhr.open('POST',form.action);xhr.upload.onprogress=event=>{if(event.lengthComputable){progressWrap.classList.remove('is-hidden');progress.value=Math.round(event.loaded/event.total*100);button.textContent=`Uploading ${progress.value}%`}};xhr.onload=()=>{document.open();document.write(xhr.responseText);document.close()};xhr.onerror=()=>{button.disabled=false;button.textContent='Retry upload';selection.textContent='Upload failed. Check your connection and try again.'};xhr.send(fd)});
+})();
