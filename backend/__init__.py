@@ -43,9 +43,21 @@ def create_app(config_object=None,start_scheduler=True):
     @app.errorhandler(404)
     def not_found(_error):
         return render_template("receiver/gone.html"), 404
+    from flask_wtf.csrf import CSRFError
+    @app.errorhandler(CSRFError)
+    def csrf_failed(error):
+        # Usually a form left open past its session; send the user back to try again instead of a bare 400.
+        from flask import flash, jsonify, redirect
+        app.logger.warning("CSRF rejected %s: %s",request.path,error.description)
+        message="Your session expired. Please try again."
+        if request.is_json: return jsonify(error=message),400
+        flash(message,"error")
+        back=request.referrer if request.referrer and request.referrer.startswith(request.host_url) else "/"
+        return redirect(back)
     @app.after_request
     def secure_headers(resp):
-        resp.headers.setdefault("X-Content-Type-Options","nosniff"); resp.headers.setdefault("Referrer-Policy","no-referrer"); resp.headers.setdefault("X-Frame-Options","SAMEORIGIN"); resp.headers.setdefault("Permissions-Policy","camera=(), microphone=(), geolocation=()")
+        # same-origin: Flask-WTF requires a same-site Referer on HTTPS form posts, and share tokens in URLs never leave the site.
+        resp.headers.setdefault("X-Content-Type-Options","nosniff"); resp.headers.setdefault("Referrer-Policy","same-origin"); resp.headers.setdefault("X-Frame-Options","SAMEORIGIN"); resp.headers.setdefault("Permissions-Policy","camera=(), microphone=(), geolocation=()")
         # With Blob storage, browsers upload to the Blob API and play video from signed Blob URLs.
         blob_media=" https://*.private.blob.vercel-storage.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
         blob_api=" https://vercel.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
