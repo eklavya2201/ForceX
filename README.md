@@ -230,7 +230,9 @@ A `forcex.env` file next to the `.exe` overrides the built-in values.
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for free hosting on PythonAnywhere, paid hosting on Render, publishing `ForceX.exe` for download, and why Vercel does not fit this application.
+See [DEPLOY.md](DEPLOY.md) for free hosting on Vercel (Neon Postgres and private Vercel Blob) or PythonAnywhere, paid hosting on Render, and publishing `ForceX.exe` for download.
+
+When `BLOB_READ_WRITE_TOKEN` is set, files are stored in Vercel Blob instead of `FORCEX_STORAGE`: browsers upload directly to signed Blob URLs, and videos and downloads are served from signed Blob links. `DATABASE_URL` (Postgres) is used when `FORCEX_DB` is not set.
 
 ## Troubleshooting
 

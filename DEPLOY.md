@@ -3,22 +3,72 @@
 This guide puts the ForceX server online for free, builds the Windows desktop app, and publishes it so anyone who opens a share link can download it.
 
 1. [Choose a host](#choose-a-host)
-2. [Free: deploy on PythonAnywhere](#free-deploy-on-pythonanywhere)
-3. [Build and publish ForceX.exe](#build-and-publish-forcexexe)
-4. [Paid: deploy on Render](#paid-deploy-on-render)
+2. [Free: deploy on Vercel](#free-deploy-on-vercel)
+3. [Free: deploy on PythonAnywhere](#free-deploy-on-pythonanywhere)
+4. [Build and publish ForceX.exe](#build-and-publish-forcexexe)
+5. [Paid: deploy on Render](#paid-deploy-on-render)
 
 ## Choose a host
 
-ForceX keeps its database and uploaded files on disk, so the host must keep files between restarts.
+ForceX needs a database and file storage that survive restarts.
 
 | Host | Cost | Keeps files | Limits |
 |---|---|---|---|
-| **PythonAnywhere Beginner** | Free | Yes | 512 MB storage in total, uploads up to about 90 MB, log in once a month to keep the site running |
-| Render Starter + disk | about $7.25 / month | Yes | 1 GB disk (more costs extra), uploads up to 500 MB |
+| **Vercel** + Neon + Vercel Blob | Free | Yes (Blob) | 1 GB files, 2,000 uploads a month, uploads up to 100 MB per share, 50 files per share, expired shares cleaned up at least daily |
+| **PythonAnywhere Beginner** | Free | Yes (disk) | 512 MB storage in total, uploads up to about 90 MB, log in once a month to keep the site running |
+| Render Starter + disk | about $7.25 / month | Yes (disk) | 1 GB disk (more costs extra), uploads up to 500 MB |
 | Render Free | Free | **No** | Deletes every file and account each time it sleeps (after 15 idle minutes) |
-| Vercel | Free | **No** | Serverless: no disk, 4.5 MB request limit, no cleanup job |
 
-Use **PythonAnywhere** for free hosting. Do not use Render Free or Vercel: the site would appear to work, then lose every share.
+Do not use Render Free: the site would appear to work, then lose every share.
+
+## Free: deploy on Vercel
+
+On Vercel there is no disk, and requests and responses are limited to 4.5 MB. ForceX handles this automatically when a Blob store is connected:
+
+- The database is Postgres from **Neon** (`DATABASE_URL`).
+- Files live in a **private Vercel Blob** store. Browsers upload straight to it through signed, single-file upload URLs, so the 4.5 MB limit does not apply.
+- Documents are shown as watermarked pages as usual. Videos and downloads are served from signed Blob links that expire within minutes.
+- Expired shares are cleaned up whenever the site gets traffic, and once a day by Vercel Cron.
+
+### 1. Import the repository
+
+In the Vercel dashboard, click **Add New** → **Project**, import your ForceX repository, and deploy with the default settings (framework: Flask). The first deployment fails until the next steps are done.
+
+### 2. Add storage
+
+On the project's **Storage** tab:
+
+1. **Create Database** → **Neon** → accept Neon's terms → **Free** plan → region **Washington, D.C. (iad1)** → connect to the project.
+2. **Create** → **Blob** → access **Private** → region **Washington, D.C. (iad1)** → connect to the project.
+
+Or with the CLI, from the repository folder: `npx vercel@latest link`, then `npx vercel@latest blob create-store forcex-files --access private --region iad1 --yes`.
+
+### 3. Add settings
+
+Under **Settings** → **Environment Variables**, add for **Production**:
+
+| Key | Value |
+|---|---|
+| `FORCEX_SECRET_KEY` | a random value: `py -c "import secrets; print(secrets.token_hex(32))"` |
+| `FORCEX_CLIENT_KEY` | a second random value (the desktop app needs the same one; do not mark it Sensitive, so it can be pulled for building the app) |
+| `CRON_SECRET` | a third random value |
+| `FORCEX_COOKIE_SECURE` | `1` |
+| `FORCEX_BEHIND_PROXY` | `1` |
+| `FORCEX_MAX_UPLOAD_MB` | `100` |
+| `FORCEX_MAX_FILES` | `50` |
+| `FORCEX_ALLOW_REGISTRATION` | `1` |
+
+`DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are added by the storage connections.
+
+### 4. Redeploy and close registration
+
+Click **Deployments** → the latest one → **Redeploy**. Open the site, register your sender account, then set `FORCEX_ALLOW_REGISTRATION` to `0` and redeploy again.
+
+### Free plan limits
+
+The Hobby plan includes 1 GB of Blob storage and 2,000 uploads a month. Each file uploaded counts once, and folder shares count once more for the zip. When a limit is reached, Blob stops working until the next month; Vercel emails you beforehand. Expired and finished shares are deleted, so storage frees itself.
+
+To build the desktop app against this site, pull the client key with `npx vercel@latest env pull --environment production .env.production` and pass `FORCEX_CLIENT_KEY` from it to `build_desktop.py`. Delete `.env.production` afterwards.
 
 ## Free: deploy on PythonAnywhere
 
