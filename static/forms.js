@@ -1,0 +1,2 @@
+// Forms marked data-submit-once ignore repeat submits (double clicks, Enter plus click) while the first is in flight.
+(()=>{const forms=document.querySelectorAll('form[data-submit-once]');const reset=()=>forms.forEach(f=>{delete f.dataset.submitting;f.querySelectorAll('button').forEach(b=>b.disabled=false)});forms.forEach(f=>f.addEventListener('submit',e=>{if(f.dataset.submitting){e.preventDefault();return}f.dataset.submitting='1';setTimeout(()=>f.querySelectorAll('button').forEach(b=>b.disabled=true))}));window.addEventListener('pageshow',reset)})();

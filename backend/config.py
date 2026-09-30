@@ -19,7 +19,8 @@ class Config:
     SECRET_KEY = os.getenv("FORCEX_SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = _database_url()
     # Serverless instances sit idle between requests; test pooled connections before reuse.
-    SQLALCHEMY_ENGINE_OPTIONS = {} if SQLALCHEMY_DATABASE_URI.startswith("sqlite") else {"pool_pre_ping": True, "pool_recycle": 280, "pool_size": 2, "max_overflow": 3}
+    # hide_parameters keeps submitted values (emails, password hashes) out of database error messages and logs.
+    SQLALCHEMY_ENGINE_OPTIONS = {"hide_parameters": True} if SQLALCHEMY_DATABASE_URI.startswith("sqlite") else {"hide_parameters": True, "pool_pre_ping": True, "pool_recycle": 280, "pool_size": 2, "max_overflow": 3}
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = int(os.getenv("FORCEX_MAX_UPLOAD_MB", "500")) * 1024 * 1024
     # Vercel's filesystem is read-only except /tmp, which only holds scratch and cache files there.

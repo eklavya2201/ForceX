@@ -1,6 +1,7 @@
 import re
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import login_user, logout_user, current_user
+from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from .extensions import db, limiter
@@ -18,10 +19,22 @@ def register():
         email=request.form.get("email","").strip().lower(); password=request.form.get("password","")
         if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",email) or len(password)<10:
             flash("Enter a valid email and a password with at least 10 characters.","error")
-        elif User.query.filter_by(email=email).first(): flash("Unable to create account with those details.","error")
         else:
-            user=User(email=email,password_hash=ph.hash(password)); db.session.add(user); db.session.commit(); login_user(user); return redirect(url_for("shares.dashboard"))
+            existing=User.query.filter_by(email=email).first()
+            if not existing:
+                try:
+                    user=User(email=email,password_hash=ph.hash(password)); db.session.add(user); db.session.commit(); login_user(user); return redirect(url_for("shares.dashboard"))
+                except IntegrityError:
+                    # Another request registered the same email a moment earlier (usually a double-clicked submit).
+                    db.session.rollback(); existing=User.query.filter_by(email=email).first()
+            if existing and _password_matches(existing,password):
+                login_user(existing); return redirect(url_for("shares.dashboard"))
+            flash("Unable to create account with those details.","error")
     return render_template("auth/register.html")
+
+def _password_matches(user,password):
+    try: return ph.verify(user.password_hash,password)
+    except (VerifyMismatchError,VerificationError): return False
 
 @bp.route("/login",methods=["GET","POST"])
 @limiter.limit("5 per minute",methods=["POST"])
