@@ -34,7 +34,7 @@ def create_view_session(share):
     db.session.add(ViewSession(share_id=share.id,session_hash=hash_token(raw),expires_at=utcnow()+ttl,ip_hash=hash_ip(request.remote_addr),ua_hash=hash_token(request.headers.get("User-Agent",""))))
     db.session.commit(); return raw,ttl
 
-def finalize(share,new_status):
+def finalize(share,new_status,delete=True):
     if share.status not in ("consumed","expired","revoked"):
         share.status=new_status; share.ended_at=utcnow(); db.session.commit()
-    delete_share_blobs(share)
+    if delete: delete_share_blobs(share)

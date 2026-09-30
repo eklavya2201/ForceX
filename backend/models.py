@@ -44,6 +44,8 @@ class StoredFile(db.Model):
     size = db.Column(db.BigInteger, nullable=False)
     sha256 = db.Column(db.String(64), nullable=False)
     is_archive = db.Column(db.Boolean, nullable=False, default=False)
+    # Pathname in Vercel Blob when files are stored there, e.g. f/<storage_key>/report.pdf
+    blob_path = db.Column(db.String(300))
     deleted_at = db.Column(db.DateTime)
 
 class ViewSession(db.Model):
@@ -65,3 +67,11 @@ class AccessLog(db.Model):
     result = db.Column(db.String(20), nullable=False)
     ip_hash = db.Column(db.String(64))
     detail = db.Column(db.String(255))
+
+class PendingUpload(db.Model):
+    # A Blob upload URL handed to a sender's browser; unclaimed ones are deleted by the sweep.
+    id = db.Column(db.Integer, primary_key=True)
+    pathname = db.Column(db.String(300), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    size = db.Column(db.BigInteger, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)

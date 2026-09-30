@@ -9,3 +9,4 @@ filetype>=1.2,<2
 python-dotenv>=1.0,<2
 waitress>=3.0,<4
 universal-drm @ git+https://github.com/neelmali182/UniversalDRM@v0.1.0
+psycopg[binary]>=3.2,<4

@@ -91,3 +91,7 @@ node_modules/
 # -----------------------------
 browser/_baked.py
 *.spec
+
+.vercel
+.env*.local
+.env*

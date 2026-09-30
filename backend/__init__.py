@@ -26,6 +26,15 @@ def create_app(config_object=None,start_scheduler=True):
     def home():
         from flask import redirect,url_for
         return redirect(url_for("shares.dashboard" if current_user.is_authenticated else "auth.login"))
+    @app.get("/cron/sweep")
+    def cron_sweep():
+        # Vercel Cron calls this with "Authorization: Bearer <CRON_SECRET>".
+        import hmac
+        from flask import abort
+        secret=app.config.get("CRON_SECRET")
+        if not secret or not hmac.compare_digest(request.headers.get("Authorization",""),f"Bearer {secret}"): abort(404)
+        from .cleanup import sweep
+        sweep(app); return {"ok":True}
     @app.get("/drm/<path:name>")
     def drm_asset(name):
         import universal_drm
@@ -37,14 +46,19 @@ def create_app(config_object=None,start_scheduler=True):
     @app.after_request
     def secure_headers(resp):
         resp.headers.setdefault("X-Content-Type-Options","nosniff"); resp.headers.setdefault("Referrer-Policy","no-referrer"); resp.headers.setdefault("X-Frame-Options","SAMEORIGIN"); resp.headers.setdefault("Permissions-Policy","camera=(), microphone=(), geolocation=()")
-        resp.headers.setdefault("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; frame-src 'self'; object-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'")
+        # With Blob storage, browsers upload to the Blob API and play video from signed Blob URLs.
+        blob_media=" https://*.private.blob.vercel-storage.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
+        blob_api=" https://vercel.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
+        resp.headers.setdefault("Content-Security-Policy",f"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'{blob_media}; connect-src 'self'{blob_api}; frame-src 'self'; object-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'")
         if request.path.startswith(("/s/","/v/")): resp.headers["Cache-Control"]="no-store, max-age=0"; resp.headers["Pragma"]="no-cache"
         return resp
     with app.app_context():
         db.create_all()
         from sqlalchemy import inspect, text
-        if "protection" not in {c["name"] for c in inspect(db.engine).get_columns("share")}:
-            db.session.execute(text("ALTER TABLE share ADD COLUMN protection VARCHAR(10) NOT NULL DEFAULT 'browser'")); db.session.commit()
+        # create_all does not add columns to existing tables
+        for table,column,ddl in (("share","protection","VARCHAR(10) NOT NULL DEFAULT 'browser'"),("stored_file","blob_path","VARCHAR(300)")):
+            if column not in {c["name"] for c in inspect(db.engine).get_columns(table)}:
+                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")); db.session.commit()
         from .cleanup import sweep
         sweep(app)
     if start_scheduler:

@@ -8,7 +8,7 @@ from .extensions import db, limiter
 from .models import Share, ViewSession, AccessLog, utcnow
 from .tokens import hash_token, check_passcode, consume_share, create_view_session, finalize
 from .audit import log_event
-from .storage import _blob_path
+from .storage import blob, local_path, signed_url
 
 bp=Blueprint("receive",__name__)
 def gone(): return render_template("receiver/gone.html"),404
@@ -72,7 +72,7 @@ def viewer(share_id):
     if share.mode!="view": abort(404)
     f=share.files[0]; kind=universal_drm.kind(f.mime)
     if f.mime not in current_app.config["INLINE_MIMES"] or not kind: abort(404)
-    try: pages=renderer.page_count(_blob_path(current_app,f.storage_key),f.mime) if kind=="pages" else 0
+    try: pages=renderer.page_count(local_path(current_app,f),f.mime) if kind=="pages" else 0
     except Exception: current_app.logger.exception("Cannot render share %s",share.id); abort(404)
     return render_template("receiver/viewer.html",share=share,kind=kind,pages=pages,mime=f.mime,watermark=viewer_watermark(share,vs),ttl=max(0,int((vs.expires_at-utcnow()).total_seconds())))
 
@@ -83,7 +83,7 @@ def view_page(share_id,index):
     if share.mode!="view": abort(404)
     f=share.files[0]
     if f.mime not in current_app.config["INLINE_MIMES"] or universal_drm.kind(f.mime)!="pages": abort(404)
-    try: data=renderer.render_page(_blob_path(current_app,f.storage_key),f.mime,index,viewer_watermark(share,vs))
+    try: data=renderer.render_page(local_path(current_app,f),f.mime,index,viewer_watermark(share,vs))
     except IndexError: abort(404)
     return send_file(BytesIO(data),mimetype="image/jpeg",max_age=0,etag=False)
 
@@ -102,7 +102,10 @@ def view_file(share_id):
     if share.mode!="view": abort(404)
     f=share.files[0]
     if f.mime not in current_app.config["INLINE_MIMES"] or universal_drm.kind(f.mime)!="video": abort(404)
-    resp=send_file(_blob_path(current_app,f.storage_key),mimetype=f.mime,conditional=True,etag=False,max_age=0,as_attachment=False)
+    if blob():
+        # Function responses are capped at 4.5 MB on Vercel, so video plays from a signed Blob URL that lasts the session.
+        return redirect(signed_url(f,max(60,int((vs.expires_at-utcnow()).total_seconds()))))
+    resp=send_file(local_path(current_app,f),mimetype=f.mime,conditional=True,etag=False,max_age=0,as_attachment=False)
     resp.headers["Content-Disposition"]="inline"; return resp
 
 @bp.get("/v/<share_id>/download")
@@ -111,7 +114,12 @@ def download(share_id):
     if share.mode!="download": abort(404)
     won=db.session.execute(update(ViewSession).where(ViewSession.id==vs.id,ViewSession.download_started.is_(False)).values(download_started=True)).rowcount; db.session.commit()
     if won!=1: abort(410)
-    f=share.files[0]; resp=send_file(_blob_path(current_app,f.storage_key),mimetype="application/octet-stream",as_attachment=True,download_name=f.display_name,conditional=False)
+    f=share.files[0]
+    if blob():
+        # The browser fetches the file from Blob with a 5-minute signed URL; the sweep deletes it 10 minutes later.
+        finalize(share,"consumed",delete=False); log_event("DOWNLOAD_STARTED",share_id=share.id)
+        return redirect(signed_url(f,300)+"&download=1")
+    resp=send_file(local_path(current_app,f),mimetype="application/octet-stream",as_attachment=True,download_name=f.display_name,conditional=False)
     sid=share.id; app=current_app._get_current_object(); resp.call_on_close(lambda: _finish_download(app,sid)); log_event("DOWNLOAD_STARTED",share_id=sid); return resp
 
 @bp.get("/v/<share_id>/download-page")
