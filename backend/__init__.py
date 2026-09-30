@@ -1,3 +1,4 @@
+import time
 from flask import Flask, request, render_template
 from flask_login import current_user
 from .extensions import db, login_manager, csrf, limiter
@@ -41,4 +42,13 @@ def create_app(config_object=None,start_scheduler=True):
     if start_scheduler:
         from .cleanup import start_scheduler
         app.extensions["forcex_scheduler"]=start_scheduler(app)
+    else:
+        # Hosts without background threads (PythonAnywhere) sweep from incoming requests instead, at most once a minute.
+        last_sweep=[time.monotonic()]
+        @app.before_request
+        def sweep_on_request():
+            if time.monotonic()-last_sweep[0]>=60:
+                last_sweep[0]=time.monotonic()
+                from .cleanup import sweep
+                sweep(app)
     return app

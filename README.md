@@ -97,6 +97,8 @@ ForceX loads configuration from `.env`. Start from `.env.example` and never comm
 | `FORCEX_ALLOW_REGISTRATION` | `1` | Set to `0` to disable new sender registrations. |
 | `FORCEX_BEHIND_PROXY` | `0` | Set to `1` behind a reverse proxy (Render, nginx) so client IPs and HTTPS links are correct. |
 | `HOST` / `PORT` | `127.0.0.1` / `5000` | Address Waitress listens on. Use `0.0.0.0` when hosting. |
+| `FORCEX_SCHEDULER` | `1` | Read by `wsgi.py`. Set to `0` on hosts without background threads (PythonAnywhere); cleanup then runs from requests. |
+| `FORCEX_DESKTOP_DOWNLOAD_URL` | this repository's latest release | Where the "Download ForceX for Windows" button points. |
 
 Example local configuration:
 
@@ -135,6 +137,8 @@ ForceX/
 |-- browser/              PySide6 desktop client for receivers
 |-- legacy/               Preserved prototype utilities
 |-- run.py                Waitress application entry point
+|-- wsgi.py               WSGI entry point for hosts such as PythonAnywhere
+|-- build_desktop.py      Builds dist/ForceX.exe for receivers
 |-- requirements.txt      Python dependencies
 |-- .env.example          Safe configuration template
 ```
@@ -223,7 +227,7 @@ A `forcex.env` file next to the `.exe` overrides the built-in values.
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for hosting on Render, and why Vercel does not fit this application.
+See [DEPLOY.md](DEPLOY.md) for free hosting on PythonAnywhere, paid hosting on Render, publishing `ForceX.exe` for download, and why Vercel does not fit this application.
 
 ## Troubleshooting
 

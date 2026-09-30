@@ -27,6 +27,7 @@ class Config:
     # Shared with the desktop client; receiver pages refuse any request that does not carry it.
     CLIENT_KEY = os.getenv("FORCEX_CLIENT_KEY")
     BEHIND_PROXY = os.getenv("FORCEX_BEHIND_PROXY", "0") == "1"
+    DESKTOP_DOWNLOAD_URL = os.getenv("FORCEX_DESKTOP_DOWNLOAD_URL", "https://github.com/eklavya2201/ForceX/releases/latest/download/ForceX.exe")
 
 class TestConfig(Config):
     TESTING = True
