@@ -79,31 +79,28 @@ Then under **Disks**, add a disk with mount path `/var/data` and size 1 GB. Unde
 1. Open your site and click **Get started** to register.
 2. In Render, go to **Environment**, set `FORCEX_ALLOW_REGISTRATION` to `0`, and save. Render redeploys, and nobody else can sign up.
 
-## 5. Connect the desktop app
+## 5. Build the desktop app for receivers
 
 Receivers can only open share links in the ForceX desktop app. Opening one in Chrome or Edge shows "Open this link in the ForceX app".
 
-On the receiver's Windows PC, from a copy of the repository:
+Build `ForceX.exe` once, on your own Windows PC, from a copy of the repository:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-desktop.txt pyinstaller
+.\.venv\Scripts\python.exe build_desktop.py --url https://forcex-XXXX.onrender.com --key <the key from step 2>
 ```
 
-Create a file named `.env` in the repository folder:
+The build takes about 5 minutes and produces `dist\ForceX.exe` (about 220 MB). The site address and key are built into it, so receivers need nothing else: they double-click it, paste the share link into the bar at the top, and press Enter.
+
+Send the `.exe` through Google Drive, OneDrive or similar, since it is too large for most email and chat apps. Windows SmartScreen will warn that it is from an unknown publisher, because the file is not code-signed. Receivers click **More info** → **Run anyway**.
+
+To point an existing `.exe` at a different server or key without rebuilding, place a file named `forcex.env` next to it:
 
 ```env
 FORCEX_URL=https://forcex-XXXX.onrender.com
-FORCEX_CLIENT_KEY=<the key from step 2>
+FORCEX_CLIENT_KEY=<key>
 ```
-
-Start the app:
-
-```powershell
-.\.venv\Scripts\python.exe -m browser.forcex_browser
-```
-
-Paste the share link into the bar at the top and press Enter.
 
 The app only works on Windows 10 version 2004 or newer, because it relies on Windows to hide its window from screenshots. On other systems it refuses to start.
 
@@ -113,7 +110,7 @@ Every push to the connected branch redeploys automatically. Data on the disk is 
 
 ## Things to know
 
-- **The client key is a shared secret, not strong protection.** Anyone who has the desktop app's `.env` can read the key and use it from a script. It stops casual use of ordinary browsers, not a determined attacker. If it leaks, generate a new one, update it in Render and in every copy of the app.
+- **The client key is a shared secret, not strong protection.** It is inside every copy of `ForceX.exe`, and anyone determined can extract it and use it from a script. It stops casual use of ordinary browsers, not a determined attacker. If it leaks, generate a new one, update it in Render, rebuild the `.exe` and send it out again.
 - **Two deployments are two separate sites.** If both of you deploy, each site has its own accounts, shares and files.
 - **Nothing stops a phone camera.** The watermark with the share ID and time is there to trace leaked photos.
 
@@ -123,6 +120,6 @@ Every push to the connected branch redeploys automatically. Data on the disk is 
 |---|---|
 | Build fails on `pip install` | Check that `PYTHON_VERSION` is `3.12.7`. |
 | Service crashes with `FORCEX_CLIENT_KEY must be set` | Add the key under **Environment**. |
-| Desktop app shows "Open this link in the ForceX app" | The key in the app's `.env` differs from the one in Render. |
-| Desktop app says "Only links from … can be opened" | `FORCEX_URL` in the app's `.env` does not match the link's address. |
+| Desktop app shows "Open this link in the ForceX app" | The `.exe` was built with a different key from the one in Render. Rebuild it. |
+| Desktop app says "Only links from … can be opened" | The `.exe` was built for a different address. Rebuild with the right `--url`. |
 | Shares vanish after a deploy | You are on the free plan, or the disk is not mounted at `/var/data`. |

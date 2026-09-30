@@ -85,3 +85,9 @@ node_modules/
 # Docker
 # -----------------------------
 *.pid
+
+# -----------------------------
+# Desktop build (the baked file holds the client key)
+# -----------------------------
+browser/_baked.py
+*.spec

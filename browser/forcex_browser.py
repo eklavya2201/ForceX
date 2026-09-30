@@ -7,9 +7,22 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings, QWebEngineUrlRequestInterceptor
 from PySide6.QtCore import Qt, QUrl
 
-load_dotenv()
-FORCEX_URL = QUrl(os.getenv("FORCEX_URL", "http://127.0.0.1:5000"))
-CLIENT_KEY = os.getenv("FORCEX_CLIENT_KEY", "")
+# Settings come from the environment, then forcex.env beside the .exe (or .env when run from source),
+# then the values build_desktop.py bakes into the .exe.
+try:
+    from browser import _baked
+except ImportError:
+    try:
+        import _baked
+    except ImportError:
+        _baked = None
+
+if getattr(sys, "frozen", False):
+    load_dotenv(os.path.join(os.path.dirname(sys.executable), "forcex.env"))
+else:
+    load_dotenv()
+FORCEX_URL = QUrl(os.getenv("FORCEX_URL", getattr(_baked, "FORCEX_URL", "http://127.0.0.1:5000")))
+CLIENT_KEY = os.getenv("FORCEX_CLIENT_KEY", getattr(_baked, "FORCEX_CLIENT_KEY", ""))
 
 # Windows 10 2004+: the window renders as black in screenshots, Snipping Tool,
 # screen recorders and screen sharing. It cannot stop a camera pointed at the screen.

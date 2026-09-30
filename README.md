@@ -212,6 +212,15 @@ It reads `FORCEX_URL` (default `http://127.0.0.1:5000`) and `FORCEX_CLIENT_KEY` 
 
 Paste a share link into the bar at the top, or pass it as an argument.
 
+To give receivers a single file instead, build `dist\ForceX.exe` with the server address and client key built in:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pyinstaller
+.\.venv\Scripts\python.exe build_desktop.py --url https://your-forcex-site --key <FORCEX_CLIENT_KEY>
+```
+
+A `forcex.env` file next to the `.exe` overrides the built-in values.
+
 ## Deployment
 
 See [DEPLOY.md](DEPLOY.md) for hosting on Render, and why Vercel does not fit this application.
