@@ -1,3 +1,4 @@
+import hmac
 from flask import Blueprint, abort, current_app, make_response, redirect, render_template, request, send_file, url_for
 from sqlalchemy import update
 from .extensions import db, limiter
@@ -8,6 +9,14 @@ from .storage import _blob_path
 
 bp=Blueprint("receive",__name__)
 def gone(): return render_template("receiver/gone.html"),404
+
+@bp.before_request
+def desktop_only():
+    # Shared content is only served to the ForceX desktop client, which blocks screen capture and printing.
+    sent=request.headers.get("X-ForceX-Client","")
+    if not hmac.compare_digest(sent.encode(),current_app.config["CLIENT_KEY"].encode()):
+        log_event("CLIENT_REJECTED",result="denied")
+        return render_template("receiver/desktop_only.html"),403
 
 @bp.get("/s/<token>")
 @limiter.limit("20 per minute")

@@ -19,7 +19,7 @@ ForceX Share lets an authenticated sender upload files and create temporary link
 - MIME allowlisting for inline previews
 - Security and access event logging
 - CSRF protection, rate limiting, security headers, and Argon2 password hashing
-- Optional PySide6 desktop client in `browser/`
+- Desktop-only receiving: shared content opens only in the ForceX desktop app, which hides its window from screenshots and screen recording and blocks printing
 
 ## User Flow
 
@@ -59,7 +59,7 @@ Generate a secret key and place it in `.env`:
 .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Replace the value of `FORCEX_SECRET_KEY` with the generated 64-character value. Then start the application:
+Replace the value of `FORCEX_SECRET_KEY` with the generated 64-character value. Run the command again and put the second value in `FORCEX_CLIENT_KEY`. Then start the application:
 
 ```powershell
 .\.venv\Scripts\python.exe run.py
@@ -87,6 +87,7 @@ ForceX loads configuration from `.env`. Start from `.env.example` and never comm
 | Variable | Default | Description |
 |---|---:|---|
 | `FORCEX_SECRET_KEY` | None | Required application secret. Use a unique random value. |
+| `FORCEX_CLIENT_KEY` | None | Required. Shared with the desktop app; receiver pages refuse requests without it. |
 | `FORCEX_DB` | `sqlite:///forcex.db` | SQLAlchemy database URL. |
 | `FORCEX_STORAGE` | `<project>/storage` | Private storage directory for uploaded blobs. |
 | `FORCEX_MAX_UPLOAD_MB` | `500` | Maximum request upload size in megabytes. |
@@ -94,11 +95,14 @@ ForceX loads configuration from `.env`. Start from `.env.example` and never comm
 | `FORCEX_DOWNLOAD_TTL_MIN` | `5` | Receiver download-session lifetime in minutes. |
 | `FORCEX_COOKIE_SECURE` | `0` | Set to `1` when serving over HTTPS. |
 | `FORCEX_ALLOW_REGISTRATION` | `1` | Set to `0` to disable new sender registrations. |
+| `FORCEX_BEHIND_PROXY` | `0` | Set to `1` behind a reverse proxy (Render, nginx) so client IPs and HTTPS links are correct. |
+| `HOST` / `PORT` | `127.0.0.1` / `5000` | Address Waitress listens on. Use `0.0.0.0` when hosting. |
 
 Example local configuration:
 
 ```env
 FORCEX_SECRET_KEY=replace-with-a-random-64-character-hex-value
+FORCEX_CLIENT_KEY=replace-with-a-different-random-64-character-hex-value
 FORCEX_DB=sqlite:///forcex.db
 FORCEX_STORAGE=storage
 FORCEX_MAX_UPLOAD_MB=500
@@ -128,7 +132,7 @@ ForceX/
 |   |-- audit.py          Access and security event logging
 |-- templates/            Jinja templates
 |-- static/               CSS and JavaScript assets
-|-- browser/              Optional PySide6 desktop client
+|-- browser/              PySide6 desktop client for receivers
 |-- legacy/               Preserved prototype utilities
 |-- run.py                Waitress application entry point
 |-- requirements.txt      Python dependencies
@@ -160,7 +164,9 @@ ForceX provides application-level controls, including:
 - CSRF protection, rate limiting, and security response headers are enabled.
 - Expired, revoked, and completed shares are cleaned up by the application.
 
-These controls do not provide DRM. A browser-based viewer cannot reliably prevent screenshots, screen recording, or copying of content that has been displayed to a receiver. Watermarks and browser restrictions are deterrents only.
+Receiver routes (`/s/...`, `/v/...`) only answer requests carrying the `X-ForceX-Client` header with the configured client key, which the desktop app sends. The desktop app uses Windows' `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` so its window is left out of screenshots, the Snipping Tool, screen recorders and screen sharing, and it never handles print requests.
+
+This is not DRM. The client key ships with the desktop app, so a determined user can extract it and fetch content with a script. Nothing prevents photographing the screen; the watermark exists to trace such leaks.
 
 Before deployment:
 
@@ -189,13 +195,26 @@ Create an app instance without starting the server, for example for a shell or i
 
 The repository currently does not include an automated test suite. At minimum, verify registration, login, share creation, receiver opening, preview/download behavior, expiry, and revocation before deployment.
 
-## Optional Desktop Client
+## Desktop Client
 
-The PySide6 client in `browser/forcex_browser.py` is a separate prototype client and currently opens Canva with downloads blocked. It is not required to run the Flask web application.
+Receivers open share links in the PySide6 client in `browser/forcex_browser.py`. Ordinary browsers get a page asking them to use the app. The client:
+
+- hides its window from screenshots and screen recording (Windows 10 2004 or newer; it refuses to start otherwise)
+- blocks printing, downloads and the right-click menu
+- only opens pages from `FORCEX_URL`
+
+It reads `FORCEX_URL` (default `http://127.0.0.1:5000`) and `FORCEX_CLIENT_KEY` from the environment or `.env`.
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
 .\.venv\Scripts\python.exe -m browser.forcex_browser
 ```
+
+Paste a share link into the bar at the top, or pass it as an argument.
+
+## Deployment
+
+See [DEPLOY.md](DEPLOY.md) for hosting on Render, and why Vercel does not fit this application.
 
 ## Troubleshooting
 

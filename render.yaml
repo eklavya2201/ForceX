@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: forcex
+    runtime: python
+    # A persistent disk needs a paid instance; on the free plan uploads and the database are wiped on every restart.
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /login
+    disk:
+      name: forcex-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: HOST
+        value: 0.0.0.0
+      - key: FORCEX_SECRET_KEY
+        generateValue: true
+      # Must match the key given to the desktop app, so it is entered by hand.
+      - key: FORCEX_CLIENT_KEY
+        sync: false
+      - key: FORCEX_DB
+        value: sqlite:////var/data/forcex.db
+      - key: FORCEX_STORAGE
+        value: /var/data/storage
+      - key: FORCEX_COOKIE_SECURE
+        value: "1"
+      - key: FORCEX_BEHIND_PROXY
+        value: "1"
+      - key: FORCEX_ALLOW_REGISTRATION
+        value: "1"

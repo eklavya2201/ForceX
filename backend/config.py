@@ -24,6 +24,9 @@ class Config:
     SESSION_COOKIE_SECURE = os.getenv("FORCEX_COOKIE_SECURE", "0") == "1"
     COOKIE_SECURE = SESSION_COOKIE_SECURE
     ALLOW_REGISTRATION = os.getenv("FORCEX_ALLOW_REGISTRATION", "1") == "1"
+    # Shared with the desktop client; receiver pages refuse any request that does not carry it.
+    CLIENT_KEY = os.getenv("FORCEX_CLIENT_KEY")
+    BEHIND_PROXY = os.getenv("FORCEX_BEHIND_PROXY", "0") == "1"
 
 class TestConfig(Config):
     TESTING = True

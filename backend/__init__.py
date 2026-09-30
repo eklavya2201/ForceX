@@ -8,6 +8,11 @@ def create_app(config_object=None,start_scheduler=True):
     app.config.from_object(config_object or "backend.config.Config")
     if not app.config.get("SECRET_KEY"):
         raise RuntimeError("FORCEX_SECRET_KEY must be set before starting ForceX")
+    if not app.config.get("CLIENT_KEY"):
+        raise RuntimeError("FORCEX_CLIENT_KEY must be set before starting ForceX")
+    if app.config.get("BEHIND_PROXY"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1,x_host=1)
     db.init_app(app); login_manager.init_app(app); csrf.init_app(app); limiter.init_app(app)
     login_manager.login_view="auth.login"
     @login_manager.user_loader
