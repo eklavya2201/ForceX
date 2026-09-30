@@ -19,7 +19,8 @@ ForceX Share lets an authenticated sender upload files and create temporary link
 - MIME allowlisting for inline previews
 - Security and access event logging
 - CSRF protection, rate limiting, security headers, and Argon2 password hashing
-- Desktop-only receiving: shared content opens only in the ForceX desktop app, which hides its window from screenshots and screen recording and blocks printing
+- Browser viewing through [UniversalDRM](https://github.com/neelmali182/UniversalDRM): PDFs, images and text are sent as page images with the share's watermark burned in, so there is no file to save, copy or print, and revoking wipes the open viewer
+- Optional "ForceX app only" protection per share: the desktop app hides its window from screenshots and screen recording
 
 ## User Flow
 
@@ -168,7 +169,9 @@ ForceX provides application-level controls, including:
 - CSRF protection, rate limiting, and security response headers are enabled.
 - Expired, revoked, and completed shares are cleaned up by the application.
 
-Receiver routes (`/s/...`, `/v/...`) only answer requests carrying the `X-ForceX-Client` header with the configured client key, which the desktop app sends. The desktop app uses Windows' `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` so its window is left out of screenshots, the Snipping Tool, screen recorders and screen sharing, and it never handles print requests.
+In view mode, PDFs, images and text files never leave the server as files. [UniversalDRM](https://github.com/neelmali182/UniversalDRM) renders them into JPEG pages with the share label, share ID, the viewer's network and the opening time burned into the pixels, and the browser viewer blocks copying, saving and printing. Browsers cannot block operating-system screenshots, so the watermark is what traces a leak.
+
+For shares with **ForceX app only** protection, receiver routes (`/s/...`, `/v/...`) only answer requests carrying the `X-ForceX-Client` header with the configured client key, which the desktop app sends. The desktop app uses Windows' `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` so its window is left out of screenshots, the Snipping Tool, screen recorders and screen sharing, and it never handles print requests.
 
 This is not DRM. The client key ships with the desktop app, so a determined user can extract it and fetch content with a script. Nothing prevents photographing the screen; the watermark exists to trace such leaks.
 
@@ -201,7 +204,7 @@ The repository currently does not include an automated test suite. At minimum, v
 
 ## Desktop Client
 
-Receivers open share links in the PySide6 client in `browser/forcex_browser.py`. Ordinary browsers get a page asking them to use the app. The client:
+Shares created with **ForceX app only** protection open only in the PySide6 client in `browser/forcex_browser.py`; ordinary browsers get a page with a download button. Shares with the default **Any browser** protection do not need it. The client:
 
 - hides its window from screenshots and screen recording (Windows 10 2004 or newer; it refuses to start otherwise)
 - blocks printing, downloads and the right-click menu

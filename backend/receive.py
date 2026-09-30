@@ -1,5 +1,8 @@
 import hmac
-from flask import Blueprint, abort, current_app, make_response, redirect, render_template, request, send_file, url_for
+import ipaddress
+from io import BytesIO
+import universal_drm
+from flask import Blueprint, abort, current_app, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from sqlalchemy import update
 from .extensions import db, limiter
 from .models import Share, ViewSession, AccessLog, utcnow
@@ -10,13 +13,28 @@ from .storage import _blob_path
 bp=Blueprint("receive",__name__)
 def gone(): return render_template("receiver/gone.html"),404
 
+renderer=universal_drm.Renderer()
+
 @bp.before_request
 def desktop_only():
-    # Shared content is only served to the ForceX desktop client, which blocks screen capture and printing.
+    # Shares marked "app" are only served to the ForceX desktop client, which blocks screen capture and printing.
+    args=request.view_args or {}
+    if "token" in args: share=Share.query.filter_by(token_hash=hash_token(args["token"])).first()
+    elif "share_id" in args: share=db.session.get(Share,args["share_id"])
+    else: return None
+    if not share or share.protection!="app": return None
     sent=request.headers.get("X-ForceX-Client","")
     if not hmac.compare_digest(sent.encode(),current_app.config["CLIENT_KEY"].encode()):
-        log_event("CLIENT_REJECTED",result="denied")
+        log_event("CLIENT_REJECTED",share_id=share.id,result="denied")
         return render_template("receiver/desktop_only.html"),403
+
+def viewer_watermark(share,vs):
+    # Burned into every page, so any screenshot or photo identifies the share and the viewer's network.
+    try:
+        ip=ipaddress.ip_address(request.remote_addr or "")
+        where=str(ipaddress.ip_network(f"{ip}/{24 if ip.version==4 else 48}",strict=False).network_address)+("/24" if ip.version==4 else "/48")
+    except ValueError: where="unknown network"
+    return f"{share.label or 'ForceX'} · #{share.id[:8]} · {where} · opened {vs.created_at:%Y-%m-%d %H:%M} UTC"
 
 @bp.get("/s/<token>")
 @limiter.limit("20 per minute")
@@ -52,14 +70,38 @@ def require_view_session(share_id):
 def viewer(share_id):
     share,vs=require_view_session(share_id)
     if share.mode!="view": abort(404)
-    return render_template("receiver/viewer.html",share=share,ttl=max(0,int((vs.expires_at-utcnow()).total_seconds())))
+    f=share.files[0]; kind=universal_drm.kind(f.mime)
+    if f.mime not in current_app.config["INLINE_MIMES"] or not kind: abort(404)
+    try: pages=renderer.page_count(_blob_path(current_app,f.storage_key),f.mime) if kind=="pages" else 0
+    except Exception: current_app.logger.exception("Cannot render share %s",share.id); abort(404)
+    return render_template("receiver/viewer.html",share=share,kind=kind,pages=pages,mime=f.mime,watermark=viewer_watermark(share,vs),ttl=max(0,int((vs.expires_at-utcnow()).total_seconds())))
 
-@bp.get("/v/<share_id>/file")
-def view_file(share_id):
+@bp.get("/v/<share_id>/page/<int:index>")
+@limiter.limit("300 per minute")
+def view_page(share_id,index):
     share,vs=require_view_session(share_id)
     if share.mode!="view": abort(404)
     f=share.files[0]
-    if f.mime not in current_app.config["INLINE_MIMES"]: abort(404)
+    if f.mime not in current_app.config["INLINE_MIMES"] or universal_drm.kind(f.mime)!="pages": abort(404)
+    try: data=renderer.render_page(_blob_path(current_app,f.storage_key),f.mime,index,viewer_watermark(share,vs))
+    except IndexError: abort(404)
+    return send_file(BytesIO(data),mimetype="image/jpeg",max_age=0,etag=False)
+
+@bp.get("/v/<share_id>/status")
+def view_status(share_id):
+    share=db.session.get(Share,share_id); raw=request.cookies.get(f"fx_view_{share_id}")
+    if share and share.status=="revoked": return jsonify(active=False,reason="revoked")
+    vs=ViewSession.query.filter_by(share_id=share_id,session_hash=hash_token(raw)).first() if share and raw else None
+    if not vs or share.status!="opened" or vs.expires_at<=utcnow(): return jsonify(active=False,reason="expired")
+    return jsonify(active=True,seconds_left=int((vs.expires_at-utcnow()).total_seconds()))
+
+@bp.get("/v/<share_id>/file")
+def view_file(share_id):
+    # Only video is streamed as a file; documents and images are served as watermarked pages.
+    share,vs=require_view_session(share_id)
+    if share.mode!="view": abort(404)
+    f=share.files[0]
+    if f.mime not in current_app.config["INLINE_MIMES"] or universal_drm.kind(f.mime)!="video": abort(404)
     resp=send_file(_blob_path(current_app,f.storage_key),mimetype=f.mime,conditional=True,etag=False,max_age=0,as_attachment=False)
     resp.headers["Content-Disposition"]="inline"; return resp
 

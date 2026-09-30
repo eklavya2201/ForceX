@@ -20,6 +20,8 @@ class Share(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     token_hash = db.Column(db.String(64), unique=True, nullable=False)
     mode = db.Column(db.String(10), nullable=False)
+    # "browser": any browser, via the UniversalDRM viewer. "app": only the ForceX desktop app, which blocks screen capture.
+    protection = db.Column(db.String(10), nullable=False, default="browser", server_default="browser")
     status = db.Column(db.String(10), nullable=False, default="active", index=True)
     label = db.Column(db.String(120))
     passcode_hash = db.Column(db.String(255))

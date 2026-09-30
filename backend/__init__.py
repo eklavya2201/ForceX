@@ -26,6 +26,11 @@ def create_app(config_object=None,start_scheduler=True):
     def home():
         from flask import redirect,url_for
         return redirect(url_for("shares.dashboard" if current_user.is_authenticated else "auth.login"))
+    @app.get("/drm/<path:name>")
+    def drm_asset(name):
+        import universal_drm
+        from flask import send_from_directory
+        return send_from_directory(universal_drm.static_dir(),name,max_age=3600)
     @app.errorhandler(404)
     def not_found(_error):
         return render_template("receiver/gone.html"), 404
@@ -37,6 +42,9 @@ def create_app(config_object=None,start_scheduler=True):
         return resp
     with app.app_context():
         db.create_all()
+        from sqlalchemy import inspect, text
+        if "protection" not in {c["name"] for c in inspect(db.engine).get_columns("share")}:
+            db.session.execute(text("ALTER TABLE share ADD COLUMN protection VARCHAR(10) NOT NULL DEFAULT 'browser'")); db.session.commit()
         from .cleanup import sweep
         sweep(app)
     if start_scheduler:

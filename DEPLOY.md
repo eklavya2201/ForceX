@@ -113,7 +113,9 @@ Then click **Reload** on the **Web** tab.
 
 ## Build and publish ForceX.exe
 
-Receivers can only open share links in the ForceX desktop app. When they open a link in Chrome or Edge, they see a **Download ForceX for Windows** button and the link to paste into the app. That button points to the `.exe` you publish here.
+Only needed for shares created with **ForceX app only** protection. Shares with the default **Any browser** protection open in any browser, watermarked, with nothing to install.
+
+When a receiver opens an app-only share in Chrome or Edge, they see a **Download ForceX for Windows** button and the link to paste into the app. That button points to the `.exe` you publish here.
 
 ### 1. Build it on your Windows PC
 
