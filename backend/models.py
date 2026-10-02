@@ -20,8 +20,9 @@ class Share(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     token_hash = db.Column(db.String(64), unique=True, nullable=False)
     mode = db.Column(db.String(10), nullable=False)
-    # "browser": any browser, via the UniversalDRM viewer. "app": only the ForceX desktop app, which blocks screen capture.
-    protection = db.Column(db.String(10), nullable=False, default="browser", server_default="browser")
+    # "browser": any browser, via the UniversalDRM viewer.
+    # "app_windows": ForceX Windows app only. "app_android": ForceX Android app only. "app_any": either app.
+    protection = db.Column(db.String(15), nullable=False, default="browser", server_default="browser")
     status = db.Column(db.String(10), nullable=False, default="active", index=True)
     label = db.Column(db.String(120))
     passcode_hash = db.Column(db.String(255))
@@ -67,6 +68,11 @@ class AccessLog(db.Model):
     result = db.Column(db.String(20), nullable=False)
     ip_hash = db.Column(db.String(64))
     detail = db.Column(db.String(255))
+    # Rich audit fields for app-mode access
+    client_type = db.Column(db.String(20))   # browser / windows_app / android_app
+    app_version = db.Column(db.String(30))
+    platform = db.Column(db.String(20))      # windows / android / derived from UA
+    device = db.Column(db.String(120))
 
 class PendingUpload(db.Model):
     # A Blob upload URL handed to a sender's browser; unclaimed ones are deleted by the sweep.

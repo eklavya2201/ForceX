@@ -1,0 +1,49 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-desktop.txt
+
+      - name: Build EXE via build_desktop.py
+        env:
+          FORCEX_URL: ${{ secrets.FORCEX_URL }}
+          FORCEX_CLIENT_KEY: ${{ secrets.FORCEX_CLIENT_KEY }}
+        run: |
+          python build_desktop.py --url "$Env:FORCEX_URL" --key "$Env:FORCEX_CLIENT_KEY"
+
+      - name: Package Windows bundle
+        run: Compress-Archive -Path dist/ForceX -DestinationPath dist/ForceX-Windows.zip -Force
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForceX-Windows
+          path: dist/ForceX-Windows.zip
+
+      # ── Publish to GitHub Releases on version tags ────────────────────────
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ForceX-Windows.zip
+          generate_release_notes: true

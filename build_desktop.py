@@ -1,4 +1,4 @@
-"""Build dist/ForceX.exe with the server address and client key built in.
+"""Build the dist/ForceX onedir bundle with server address and client key built in.
 
     python build_desktop.py --url https://forcex-xxxx.onrender.com --key <FORCEX_CLIENT_KEY>
 
@@ -28,15 +28,19 @@ def main():
     BAKED.write_text(f"FORCEX_URL = {args.url.rstrip('/')!r}\nFORCEX_CLIENT_KEY = {args.key!r}\n", encoding="utf-8")
     try:
         subprocess.run([
-            sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed",
+            sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--windowed",
             "--name", "ForceX", "--paths", str(ROOT),
+            "--collect-all", "webview",
+            "--collect-all", "pythonnet",
+            "--collect-all", "clr_loader",
+            "--hidden-import", "clr",
             "--hidden-import", "_baked",
             str(ROOT / "browser" / "forcex_browser.py"),
         ], cwd=ROOT, check=True)
     finally:
         # Keep the key out of the working tree once it is inside the .exe.
         BAKED.unlink(missing_ok=True)
-    print(f"\nBuilt {ROOT / 'dist' / 'ForceX.exe'} for {args.url}")
+    print(f"\nBuilt {ROOT / 'dist' / 'ForceX' / 'ForceX.exe'} for {args.url}")
 
 
 if __name__ == "__main__":

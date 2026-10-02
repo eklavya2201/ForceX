@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-initial-url="{{ initial_url }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ForceX Secure Browser</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='browser-client.css') }}">
+</head>
+<body>
+  <header class="browser-bar">
+    <div class="brand">FORCEX <span>/ SECURE BROWSER</span></div>
+    <div class="navigation">
+      <button id="home" type="button" title="Home" aria-label="Home">&#8962;</button>
+      <button id="back" type="button" title="Back" aria-label="Back">&#8592;</button>
+      <button id="forward" type="button" title="Forward" aria-label="Forward">&#8594;</button>
+      <button id="reload" type="button" title="Reload" aria-label="Reload">&#8635;</button>
+      <form id="address-form">
+        <label for="address">Paste the sender's share link</label>
+        <div class="address-controls">
+          <input id="address" type="url" placeholder="Paste the ForceX link here" autocomplete="off" spellcheck="false" autofocus required>
+          <button type="submit">Open share</button>
+        </div>
+      </form>
+    </div>
+  </header>
+  <div id="browser-error" role="status" hidden></div>
+  <iframe id="page" title="ForceX share" referrerpolicy="same-origin"></iframe>
+  <script src="{{ url_for('static', filename='browser-client.js') }}" defer></script>
+</body>
+</html>
