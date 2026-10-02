@@ -21,7 +21,10 @@ def create_app(config_object=None,start_scheduler=True):
     from .auth import bp as auth_bp
     from .shares import bp as shares_bp
     from .receive import bp as receive_bp
+    from .native_api import bp as native_api_bp
     app.register_blueprint(auth_bp); app.register_blueprint(shares_bp); app.register_blueprint(receive_bp)
+    app.register_blueprint(native_api_bp)
+    csrf.exempt(native_api_bp)
     @app.get("/")
     def home():
         from flask import redirect,url_for
