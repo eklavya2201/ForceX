@@ -1,51 +1,73 @@
 # ForceX Share
 
-Private, one-time file sharing built with Flask.
+> Private, one-time file sharing with watermarked browser viewing and screenshot-protected native clients.
 
-ForceX Share lets an authenticated sender upload files and create temporary links for receivers. Shares can require a passcode, expire automatically, and be revoked by the sender. Receiver access is mediated by short-lived sessions rather than permanent public file URLs.
+ForceX Share is a self-hosted Flask application that lets authenticated senders upload files and generate short-lived links for receivers. Shares are consumed once, expire automatically, and can be revoked at any time. Content viewed in a browser is rendered as watermarked page images by [UniversalDRM](https://github.com/neelmali182/UniversalDRM) — the original file never leaves the server. Native clients for Windows and Android add OS-level screenshot exclusion on top of that.
 
-> **Project status:** MVP/prototype. Review the deployment and security notes before exposing this application to the internet.
+> **Status:** MVP/prototype. Review the [security notes](#security) and [pre-deployment checklist](#pre-deployment-checklist) before exposing this to the internet.
 
-## Capabilities
+---
 
-- Sender registration, login, logout, and dashboard
-- File and folder uploads with server-side storage outside the public web root
-- One-time share links with optional passcodes
-- View-once and download-once access modes
-- Configurable share expiry: 1 hour, 24 hours, or 7 days
-- Short-lived receiver sessions
-- Sender-side revocation
-- Automatic expiry and cleanup of temporary data
-- MIME allowlisting for inline previews
-- Security and access event logging
-- CSRF protection, rate limiting, security headers, and Argon2 password hashing
-- Browser viewing through [UniversalDRM](https://github.com/neelmali182/UniversalDRM): PDFs, images and text are sent as page images with the share's watermark burned in, so there is no file to save, copy or print, and revoking wipes the open viewer
-- Optional "ForceX app only" protection per share: the desktop app hides its window from screenshots and screen recording
+## Table of Contents
 
-## User Flow
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Security](#security)
+- [Client Apps](#client-apps)
+- [Deployment](#deployment)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## Features
+
+| Capability | Details |
+|---|---|
+| One-time share links | Each link opens once; consumption is atomic to prevent race conditions |
+| Access modes | View-once (browser renders watermarked page images) or download-once |
+| Passcode protection | Optional per-share passcode with lockout after 5 failed attempts |
+| Configurable expiry | 1 hour, 24 hours, or 7 days |
+| Sender revocation | Active shares can be revoked from the dashboard at any time |
+| Watermarking | Share label, share ID, viewer network, and open timestamp burned into every rendered page |
+| Screenshot blocking | Windows (`WDA_EXCLUDEFROMCAPTURE`) and Android (`FLAG_SECURE`) in native clients |
+| App-only protection | Per-share option that restricts access to the native client only |
+| Audit logging | Every access and security event is recorded with client type, platform, and device |
+| Automatic cleanup | Expired and consumed shares and their files are removed by the background scheduler |
+
+---
+
+## How It Works
 
 ```text
-Sender -> Upload files -> Create share -> Copy temporary link
-                                              |
-Receiver <- Open link <- Optional passcode <-+
-    |
-    +-> View once or download once
-    |
-    +-> Session expires, share is consumed, or sender revokes access
+Sender ──► Upload files ──► Create share ──► Copy link
+                                                 │
+Receiver ◄── Open link ◄── Optional passcode ◄──┘
+    │
+    ├── View  ──► page images rendered server-side, watermarked ──► session expires
+    │
+    └── Download  ──► one-time short-lived download session
 ```
 
-The landing page does not consume a share. Consumption occurs only after the receiver submits the explicit open action. Token hashes, not raw share tokens, are stored in the database.
+The share landing page does not consume a share. Consumption happens only after the receiver submits the explicit open action. Raw share tokens are never written to the database — only their SHA-256 hashes are stored.
+
+---
 
 ## Requirements
 
-- Windows or another supported Python environment
 - Python 3.12 or newer
-- PowerShell on Windows
-- Git, if cloning the repository
+- PowerShell (Windows setup and native client build)
+- Git (to clone the repository)
+- Edge WebView2 Runtime (Windows client only — included in Windows 11; downloadable for Windows 10)
 
-## Quick Start: Windows
+---
 
-From the repository root:
+## Quick Start
 
 ```powershell
 py -3.12 -m venv .venv
@@ -54,52 +76,53 @@ py -3.12 -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Generate a secret key and place it in `.env`:
+Generate two independent secret keys and place them in `.env`:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Replace the value of `FORCEX_SECRET_KEY` with the generated 64-character value. Run the command again and put the second value in `FORCEX_CLIENT_KEY`. Then start the application:
+Run the command twice. Set the first output as `FORCEX_SECRET_KEY` and the second as `FORCEX_CLIENT_KEY`. Then start the server:
 
 ```powershell
 .\.venv\Scripts\python.exe run.py
 ```
 
-Open [http://127.0.0.1:5000](http://127.0.0.1:5000), register a sender account, and create a share.
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000), register a sender account, and create your first share.
 
-Stop the server with `Ctrl+C`.
-
-### Using an Existing Virtual Environment
-
-If the environment is already created, the minimum launch sequence is:
+### Reusing an Existing Environment
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe run.py
 ```
 
-Use `python -m pip` rather than a separate `pip` executable to ensure packages are installed into the interpreter that runs ForceX.
+Always use `.venv\Scripts\python.exe -m pip` rather than a bare `pip` to ensure packages land in the correct interpreter.
+
+---
 
 ## Configuration
 
-ForceX loads configuration from `.env`. Start from `.env.example` and never commit `.env`.
+Copy `.env.example` to `.env` and never commit `.env` to source control.
 
 | Variable | Default | Description |
-|---|---:|---|
-| `FORCEX_SECRET_KEY` | None | Required application secret. Use a unique random value. |
-| `FORCEX_CLIENT_KEY` | None | Required. Shared with the desktop app; receiver pages refuse requests without it. |
+|---|---|---|
+| `FORCEX_SECRET_KEY` | *(required)* | Flask session secret. Use a unique random 64-character hex value. |
+| `FORCEX_CLIENT_KEY` | *(required)* | Shared with native clients. Receiver routes reject requests that do not carry it. |
 | `FORCEX_DB` | `sqlite:///forcex.db` | SQLAlchemy database URL. |
-| `FORCEX_STORAGE` | `<project>/storage` | Private storage directory for uploaded blobs. |
-| `FORCEX_MAX_UPLOAD_MB` | `500` | Maximum request upload size in megabytes. |
+| `FORCEX_STORAGE` | `<project>/storage` | Private upload directory, outside the web root. |
+| `FORCEX_MAX_UPLOAD_MB` | `500` | Maximum upload size in megabytes. |
 | `FORCEX_VIEW_TTL_MIN` | `10` | Receiver view-session lifetime in minutes. |
 | `FORCEX_DOWNLOAD_TTL_MIN` | `5` | Receiver download-session lifetime in minutes. |
 | `FORCEX_COOKIE_SECURE` | `0` | Set to `1` when serving over HTTPS. |
-| `FORCEX_ALLOW_REGISTRATION` | `1` | Set to `0` to disable new sender registrations. |
-| `FORCEX_BEHIND_PROXY` | `0` | Set to `1` behind a reverse proxy (Render, nginx) so client IPs and HTTPS links are correct. |
-| `HOST` / `PORT` | `127.0.0.1` / `5000` | Address Waitress listens on. Use `0.0.0.0` when hosting. |
-| `FORCEX_SCHEDULER` | `1` | Read by `wsgi.py`. Set to `0` on hosts without background threads (PythonAnywhere); cleanup then runs from requests. |
-| `FORCEX_DESKTOP_DOWNLOAD_URL` | this repository's latest release | Where the "Download ForceX for Windows" button points. |
+| `FORCEX_ALLOW_REGISTRATION` | `1` | Set to `0` to lock new sender registrations after initial setup. |
+| `FORCEX_BEHIND_PROXY` | `0` | Set to `1` behind nginx, Render, or similar reverse proxies. |
+| `HOST` / `PORT` | `127.0.0.1` / `5000` | Address Waitress listens on. Use `0.0.0.0` to accept external connections. |
+| `FORCEX_SCHEDULER` | `1` | Set to `0` on hosts without background threads (e.g. PythonAnywhere). |
+| `BLOB_READ_WRITE_TOKEN` | *(unset)* | When set, files are stored in Vercel Blob; browsers upload directly to signed URLs. |
+| `DATABASE_URL` | *(unset)* | Postgres URL from Neon. Used automatically when `FORCEX_DB` is not set. |
+| `FORCEX_DESKTOP_DOWNLOAD_URL` | latest GitHub release | URL for the "Download ForceX" button shown to receivers. |
+| `FORCEX_ANDROID_DOWNLOAD_URL` | latest GitHub release | URL for the Android APK download link. |
 
 Example local configuration:
 
@@ -115,153 +138,197 @@ FORCEX_COOKIE_SECURE=0
 FORCEX_ALLOW_REGISTRATION=1
 ```
 
-For production, use a managed or externally hosted database where appropriate, persistent private storage, HTTPS, and `FORCEX_COOKIE_SECURE=1`.
+---
 
-## Application Architecture
+## Architecture
 
-```text
+```
 ForceX/
-|-- backend/
-|   |-- __init__.py       Flask application factory and security headers
-|   |-- config.py         Environment-backed configuration
-|   |-- extensions.py     SQLAlchemy, login, CSRF, and rate limiting
-|   |-- models.py         Users, shares, files, sessions, and audit records
-|   |-- auth.py           Registration and authentication routes
-|   |-- shares.py         Share creation, dashboard, and revocation
-|   |-- receive.py        Receiver landing, preview, and download routes
-|   |-- tokens.py         Token hashing, consumption, and receiver sessions
-|   |-- storage.py        Upload handling, archives, and cleanup
-|   |-- cleanup.py        Expiry and scheduled cleanup
-|   |-- audit.py          Access and security event logging
-|-- templates/            Jinja templates
-|-- static/               CSS and JavaScript assets
-|-- browser/              PySide6 desktop client for receivers
-|-- legacy/               Preserved prototype utilities
-|-- run.py                Waitress application entry point
-|-- wsgi.py               WSGI entry point for hosts such as PythonAnywhere
-|-- build_desktop.py      Builds dist/ForceX.exe for receivers
-|-- requirements.txt      Python dependencies
-|-- .env.example          Safe configuration template
+├── backend/
+│   ├── __init__.py       Application factory, security headers
+│   ├── config.py         Environment-backed configuration
+│   ├── extensions.py     SQLAlchemy, Flask-Login, CSRF, rate limiter
+│   ├── models.py         User, Share, StoredFile, ViewSession, AccessLog, PendingUpload
+│   ├── auth.py           Sender registration, login, logout
+│   ├── shares.py         Share creation, dashboard, revocation
+│   ├── receive.py        Receiver landing, preview, and download routes
+│   ├── tokens.py         Token hashing, atomic consumption, receiver sessions
+│   ├── storage.py        Upload handling, folder archives, Vercel Blob integration
+│   ├── cleanup.py        Expiry sweeps and scheduled background cleanup
+│   └── audit.py          Access and security event logging
+├── templates/            Jinja2 templates
+├── static/               CSS and JavaScript assets
+├── browser/              PySide6 + Edge WebView2 desktop client
+├── android/              Android client (Gradle)
+├── tests/                Automated test suite
+├── run.py                Waitress entry point (local and controlled deployments)
+├── wsgi.py               WSGI entry point (PythonAnywhere, Render)
+└── build_desktop.py      PyInstaller build script for dist/ForceX.exe
 ```
 
-The application is created by `backend.create_app()`. `run.py` serves it with Waitress on `127.0.0.1:5000`. Database tables are created during application initialization and the cleanup sweep runs at startup; the scheduler continues periodic cleanup while the process is running.
+The application is created by `backend.create_app()`. Database tables are created and the cleanup sweep runs at startup; the APScheduler instance continues periodic cleanup while the process is live.
 
-## Route Surface
+### Route Surface
 
 | Area | Routes |
 |---|---|
 | Authentication | `/register`, `/login`, `/logout` |
-| Sender | `/dashboard`, `/new`, `/shares`, `/shares/<share_id>/revoke` |
-| Receiver | `/s/<token>`, `/s/<token>/open` |
-| Receiver session | `/v/<share_id>`, `/v/<share_id>/file`, `/v/<share_id>/download`, `/v/<share_id>/end` |
+| Sender | `/dashboard`, `/new`, `/shares`, `/shares/<id>/revoke` |
+| Receiver landing | `/s/<token>`, `/s/<token>/open` |
+| Receiver session | `/v/<id>`, `/v/<id>/file`, `/v/<id>/download`, `/v/<id>/end` |
 
-Receiver file routes require a valid share-scoped session. Files are served from private storage through application routes rather than as static assets.
+Receiver file routes require a valid, short-lived share-scoped session. Files are served through application routes — never as static assets.
 
-## Security Considerations
+---
 
-ForceX provides application-level controls, including:
+## Security
 
-- Raw share tokens are not stored in the database.
-- Share consumption is performed atomically to prevent concurrent reuse.
-- Receiver sessions are short-lived and scoped to a share.
-- Uploads are stored outside `static/` and use server-generated storage keys.
-- Passwords are hashed with Argon2.
-- CSRF protection, rate limiting, and security response headers are enabled.
-- Expired, revoked, and completed shares are cleaned up by the application.
+**Token handling.** Raw share tokens are not stored anywhere. Consumption is performed atomically inside a database transaction to prevent concurrent reuse of the same link.
 
-In view mode, PDFs, images and text files never leave the server as files. [UniversalDRM](https://github.com/neelmali182/UniversalDRM) renders them into JPEG pages with the share label, share ID, the viewer's network and the opening time burned into the pixels, and the browser viewer blocks copying, saving and printing. Browsers cannot block operating-system screenshots, so the watermark is what traces a leak.
+**Browser viewing.** PDFs, images, and text files are rendered server-side into JPEG page images by [UniversalDRM](https://github.com/neelmali182/UniversalDRM). The share label, share ID, viewer network, and open timestamp are burned into every pixel. The browser viewer blocks copying, saving, and printing. If a receiver photographs the screen, the watermark traces the leak.
 
-For shares with **ForceX app only** protection, receiver routes (`/s/...`, `/v/...`) only answer requests carrying the `X-ForceX-Client` header with the configured client key, which the desktop app sends. The desktop app uses Windows' `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` so its window is left out of screenshots, the Snipping Tool, screen recorders and screen sharing, and it never handles print requests.
+**App-only protection.** Shares configured as *ForceX app only* require the `X-ForceX-Client` header carrying `FORCEX_CLIENT_KEY`. Ordinary browsers receive a landing page with a download link instead of access to content.
 
-This is not DRM. The client key ships with the desktop app, so a determined user can extract it and fetch content with a script. Nothing prevents photographing the screen; the watermark exists to trace such leaks.
+**Application controls enabled by default:**
 
-Before deployment:
+- Argon2id password hashing
+- CSRF protection on all state-changing forms
+- Rate limiting on authentication routes
+- `HttpOnly`, `SameSite=Lax` session cookies (`Secure` when `FORCEX_COOKIE_SECURE=1`)
+- `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` response headers
+- Uploads stored outside `static/` using server-generated storage keys
 
-1. Run behind HTTPS and set `FORCEX_COOKIE_SECURE=1`.
-2. Keep `.env`, the database, logs, and `storage/` outside source control.
-3. Use persistent, access-controlled storage and back up the database according to your retention policy.
-4. Put a reverse proxy and appropriate request-size limits in front of Waitress.
+**Honest limitations.** The client key is embedded in the desktop app binary, so a determined user can extract it and fetch content with a script. Nothing prevents photographing a screen — the watermark is a forensic trace, not a technical barrier. ForceX provides application-layer controls, not cryptographic DRM.
+
+### Pre-Deployment Checklist
+
+1. Serve behind HTTPS and set `FORCEX_COOKIE_SECURE=1`.
+2. Keep `.env`, the database, `logs/`, and `storage/` out of source control and backups that are not access-controlled.
+3. Use persistent, access-controlled storage. Back up the database on a schedule that matches your retention policy.
+4. Place a reverse proxy (nginx, Caddy) with appropriate request-size limits in front of Waitress.
 5. Set `FORCEX_ALLOW_REGISTRATION=0` after creating the required sender accounts.
-6. Review rate limits, expiry values, logging, and upload policies for your threat model.
+6. Review rate limits, expiry values, logging retention, and upload size limits for your threat model.
+7. Do not expose Flask's development server directly to the internet.
 
-Do not expose Flask's development server directly to the public internet. The provided `run.py` uses Waitress for local and controlled deployments, but production hardening is still required.
+---
 
-## Development
+## Client Apps
 
-Run the application locally:
+Shares with **Any browser** protection open in any browser through the UniversalDRM viewer. Shares with **ForceX app only** protection require a native client.
 
-```powershell
-.\.venv\Scripts\python.exe run.py
-```
+Both native clients:
 
-Create an app instance without starting the server, for example for a shell or integration test:
+- Hide their windows from screenshots, screen recording, Snipping Tool, and screen share (Windows 10 2004+ / Android 7.0+)
+- Block printing and right-click context menus
+- Only navigate to pages served from `FORCEX_URL`
 
-```powershell
-.\.venv\Scripts\python.exe -c "from backend import create_app; app = create_app(start_scheduler=False); print(app.url_map)"
-```
+### Windows
 
-The repository currently does not include an automated test suite. At minimum, verify registration, login, share creation, receiver opening, preview/download behavior, expiry, and revocation before deployment.
+The Windows client is a PySide6 application using the Microsoft Edge WebView2 control. It reads `FORCEX_URL` (default `http://127.0.0.1:5000`) and `FORCEX_CLIENT_KEY` from the environment or a `.env` file.
 
-## Desktop Client
-
-Shares created with **ForceX app only** protection open only in the PySide6 client in `browser/forcex_browser.py`; ordinary browsers get a page with a download button. Shares with the default **Any browser** protection do not need it. The client:
-
-- hides its window from screenshots and screen recording (Windows 10 2004 or newer; it refuses to start otherwise)
-- blocks printing, downloads and the right-click menu
-- only opens pages from `FORCEX_URL`
-
-It reads `FORCEX_URL` (default `http://127.0.0.1:5000`) and `FORCEX_CLIENT_KEY` from the environment or `.env`.
+**Run from source:**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
 .\.venv\Scripts\python.exe -m browser.forcex_browser
 ```
 
-Paste a share link into the bar at the top, or pass it as an argument.
+Paste a share link into the address bar at the top, or pass it as a command-line argument.
 
-To give receivers a single file instead, build `dist\ForceX.exe` with the server address and client key built in:
+**Build a distributable EXE:**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install pyinstaller
 .\.venv\Scripts\python.exe build_desktop.py --url https://your-forcex-site --key <FORCEX_CLIENT_KEY>
 ```
 
-A `forcex.env` file next to the `.exe` overrides the built-in values.
+The output is an `onedir` bundle at `dist\ForceX\`. Distribute the entire folder — `ForceX.exe` alone is not sufficient. A `forcex.env` file placed next to `ForceX.exe` overrides the built-in server address and client key.
+
+> For local screenshot testing only, set `FORCEX_DISABLE_CAPTURE_PROTECTION=1` before launching. Keep this unset in all other environments.
+
+### Android
+
+The Android client source is in `android/`. Pass `FORCEX_URL` and `FORCEX_CLIENT_KEY` at Gradle build time:
+
+```bash
+export FORCEX_URL="https://your-forcex-site"
+export FORCEX_CLIENT_KEY="<FORCEX_CLIENT_KEY>"
+cd android
+./gradlew assembleRelease
+```
+
+### GitHub Actions
+
+The repository includes workflows that build the Windows EXE and Android APK automatically when a tag matching `v*` is pushed. Built artifacts are uploaded to the corresponding GitHub release.
+
+---
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for free hosting on Vercel (Neon Postgres and private Vercel Blob) or PythonAnywhere, paid hosting on Render, and publishing `ForceX.exe` for download.
+See [DEPLOY.md](DEPLOY.md) for step-by-step guides covering:
 
-When `BLOB_READ_WRITE_TOKEN` is set, files are stored in Vercel Blob instead of `FORCEX_STORAGE`: browsers upload directly to signed Blob URLs, and videos and downloads are served from signed Blob links. `DATABASE_URL` (Postgres) is used when `FORCEX_DB` is not set.
+- **Vercel** — serverless hosting with Neon Postgres and private Vercel Blob storage
+- **PythonAnywhere** — set `FORCEX_SCHEDULER=0` and use `wsgi.py` as the entry point
+- **Render** — paid hosting with a persistent disk for file storage
+
+When `BLOB_READ_WRITE_TOKEN` is set, sender browsers upload files directly to signed Vercel Blob URLs and receivers stream downloads from signed links — the application server is not in the data path. `DATABASE_URL` (Neon Postgres) is used automatically when `FORCEX_DB` is not set, which is the standard Vercel setup.
+
+---
+
+## Development
+
+**Run the server locally:**
+
+```powershell
+.\.venv\Scripts\python.exe run.py
+```
+
+**Run the test suite:**
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+The test suite in `tests/` covers registration, login, share creation, receiver opening, view and download behavior, expiry, and revocation. Run it before deploying any change.
+
+**Inspect the application without starting the server:**
+
+```powershell
+.\.venv\Scripts\python.exe -c "from backend import create_app; app = create_app(start_scheduler=False); print(app.url_map)"
+```
+
+---
 
 ## Troubleshooting
 
-### `FORCEX_SECRET_KEY must be set before starting ForceX`
+**`FORCEX_SECRET_KEY must be set before starting ForceX`**
 
-Create `.env` from `.env.example` and set a non-empty `FORCEX_SECRET_KEY`:
+Create `.env` from the example and set a non-empty key:
 
 ```powershell
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### Package installation goes to the wrong Python installation
+**Packages install to the wrong Python**
 
-Use the virtual-environment interpreter for both installation and execution:
+Always use the virtual-environment interpreter explicitly:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe run.py
 ```
 
-### Port 5000 is already in use
+**Port 5000 is already in use**
 
-Stop the process using the port or change the host/port in `run.py` before starting the application.
+Stop the conflicting process, or set `PORT=<other port>` in `.env` before starting.
 
-### Uploads or shares disappear after restart
+**Shares or uploads disappear after a restart**
 
-Check that `FORCEX_STORAGE` points to persistent storage and that the database URL is not using a temporary location. The cleanup scheduler intentionally removes expired or finalized share data.
+Verify `FORCEX_STORAGE` points to persistent storage and that `FORCEX_DB` (or `DATABASE_URL`) is not a temporary path. The cleanup scheduler intentionally removes expired and consumed share data.
+
+---
 
 ## License
 
-This project is currently an MVP/prototype and does not yet declare a license. Add the intended license before public distribution.
+No license has been declared yet. Add one before public distribution.

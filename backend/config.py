@@ -44,9 +44,12 @@ class Config:
     CLIENT_KEY = os.getenv("FORCEX_CLIENT_KEY")
     BEHIND_PROXY = os.getenv("FORCEX_BEHIND_PROXY", "0") == "1"
     DESKTOP_DOWNLOAD_URL = os.getenv("FORCEX_DESKTOP_DOWNLOAD_URL", "https://github.com/eklavya2201/ForceX/releases/latest/download/ForceX.exe")
+    ANDROID_DOWNLOAD_URL = os.getenv("FORCEX_ANDROID_DOWNLOAD_URL", "https://github.com/eklavya2201/ForceX/releases/latest/download/ForceX.apk")
 
 class TestConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
     RATELIMIT_ENABLED = False
     SECRET_KEY = "test-secret"
+    CLIENT_KEY = "test-client-key"
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"

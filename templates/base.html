@@ -6,6 +6,7 @@
   <title>{% block title %}ForceX Share{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static',filename='app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='theme.css') }}">
+  {% block page_styles %}{% endblock %}
 </head>
 <body>
   <canvas id="network" aria-hidden="true"></canvas><div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>

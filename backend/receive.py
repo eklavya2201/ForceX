@@ -1,8 +1,10 @@
 import hmac
 import ipaddress
+import re
 from io import BytesIO
+from urllib.parse import urlsplit
 import universal_drm
-from flask import Blueprint, abort, current_app, jsonify, make_response, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from sqlalchemy import update
 from .extensions import db, limiter
 from .models import Share, ViewSession, AccessLog, utcnow
@@ -15,18 +17,27 @@ def gone(): return render_template("receiver/gone.html"),404
 
 renderer=universal_drm.Renderer()
 
+APP_PROTECTIONS = ("app", "app_windows", "app_android", "app_any")  # "app" kept for legacy rows
+
 @bp.before_request
 def desktop_only():
-    # Shares marked "app" are only served to the ForceX desktop client, which blocks screen capture and printing.
+    # Shares marked with an app protection are only served to the ForceX app, which blocks screen capture.
     args=request.view_args or {}
     if "token" in args: share=Share.query.filter_by(token_hash=hash_token(args["token"])).first()
     elif "share_id" in args: share=db.session.get(Share,args["share_id"])
     else: return None
-    if not share or share.protection!="app": return None
+    if not share or share.protection not in APP_PROTECTIONS: return None
     sent=request.headers.get("X-ForceX-Client","")
-    if not hmac.compare_digest(sent.encode(),current_app.config["CLIENT_KEY"].encode()):
-        log_event("CLIENT_REJECTED",share_id=share.id,result="denied")
-        return render_template("receiver/desktop_only.html"),403
+    if hmac.compare_digest(sent.encode(),current_app.config["CLIENT_KEY"].encode()):
+        return None
+    log_event("GATE_BLOCKED",share_id=share.id,result="denied")
+    if share.protection == "app_android":
+        platform = "android"
+    elif share.protection == "app_any":
+        platform = "any"
+    else:
+        platform = "windows"
+    return render_template("receiver/desktop_only.html", platform=platform),403
 
 def viewer_watermark(share,vs):
     # Burned into every page, so any screenshot or photo identifies the share and the viewer's network.
@@ -42,6 +53,27 @@ def landing(token):
     share=Share.query.filter_by(token_hash=hash_token(token)).first()
     if not share or share.status!="active" or share.expires_at<=utcnow(): return gone()
     return render_template("receiver/landing.html",token=token,needs_passcode=bool(share.passcode_hash),mode=share.mode)
+
+@bp.post("/open-link")
+def open_link():
+    pasted=request.form.get("share_url","").strip()
+    try:
+        target=urlsplit(pasted)
+        current=urlsplit(request.host_url)
+        if target.scheme or target.netloc:
+            target_origin=(target.scheme.lower(),target.hostname.lower(),target.port or (443 if target.scheme.lower()=="https" else 80))
+            current_origin=(current.scheme.lower(),current.hostname.lower(),current.port or (443 if current.scheme.lower()=="https" else 80))
+            same_origin=target_origin==current_origin
+        else:
+            same_origin=pasted.startswith("/")
+    except (AttributeError,ValueError):
+        same_origin=False
+        target=None
+    match=re.fullmatch(r"/s/([A-Za-z0-9_-]+)",target.path) if same_origin and target else None
+    if not match:
+        flash("Paste a valid ForceX share link from this site.","error")
+        return redirect(url_for("shares.dashboard"))
+    return redirect(url_for("receive.landing",token=match.group(1)))
 
 @bp.post("/s/<token>/open")
 @limiter.limit("10 per minute")
@@ -74,7 +106,8 @@ def viewer(share_id):
     if f.mime not in current_app.config["INLINE_MIMES"] or not kind: abort(404)
     try: pages=renderer.page_count(local_path(current_app,f),f.mime) if kind=="pages" else 0
     except Exception: current_app.logger.exception("Cannot render share %s",share.id); abort(404)
-    return render_template("receiver/viewer.html",share=share,kind=kind,pages=pages,mime=f.mime,watermark=viewer_watermark(share,vs),ttl=max(0,int((vs.expires_at-utcnow()).total_seconds())))
+    wm = viewer_watermark(share,vs) if share.protection == "browser" else ""
+    return render_template("receiver/viewer.html",share=share,kind=kind,pages=pages,mime=f.mime,watermark=wm,ttl=max(0,int((vs.expires_at-utcnow()).total_seconds())))
 
 @bp.get("/v/<share_id>/page/<int:index>")
 @limiter.limit("300 per minute")
@@ -83,7 +116,8 @@ def view_page(share_id,index):
     if share.mode!="view": abort(404)
     f=share.files[0]
     if f.mime not in current_app.config["INLINE_MIMES"] or universal_drm.kind(f.mime)!="pages": abort(404)
-    try: data=renderer.render_page(local_path(current_app,f),f.mime,index,viewer_watermark(share,vs))
+    wm = viewer_watermark(share,vs) + f" · p{index+1}" if share.protection == "browser" else ""
+    try: data=renderer.render_page(local_path(current_app,f),f.mime,index,wm)
     except IndexError: abort(404)
     return send_file(BytesIO(data),mimetype="image/jpeg",max_age=0,etag=False)
 

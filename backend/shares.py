@@ -60,7 +60,11 @@ def create():
     mode,note=enforce_mode(request.form.get("mode","download"),info,current_app)
     expiry=current_app.config["EXPIRY_CHOICES"].get(request.form.get("expiry"),current_app.config["EXPIRY_CHOICES"]["24h"])
     passcode=request.form.get("passcode","").strip(); token=new_token()
-    protection="app" if mode=="view" and request.form.get("protection")=="app" else "browser"
+    if mode == "view" and request.form.get("protection") == "app":
+        plat = request.form.get("platform", "")          # windows / android / any
+        protection = {"windows": "app_windows", "android": "app_android"}.get(plat, "app_any")
+    else:
+        protection = "browser"   # download-once always gives the real file
     share=Share(sender_id=current_user.id,token_hash=hash_token(token),mode=mode,protection=protection,label=request.form.get("label","")[:120] or None,passcode_hash=ph.hash(passcode) if passcode else None,expires_at=utcnow()+expiry,file_count=len(info["manifest"]),total_size=sum(item["size"] for item in info["manifest"]),manifest_json=json.dumps(info["manifest"]))
     share.files.append(StoredFile(storage_key=info["storage_key"],blob_path=info["blob_path"],display_name=info["display_name"],mime=info["mime"],size=info["size"],sha256=info["sha256"],is_archive=info["is_archive"]))
     db.session.add(share); db.session.commit(); log_event("SHARE_CREATED",share_id=share.id)

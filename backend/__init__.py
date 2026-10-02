@@ -26,6 +26,9 @@ def create_app(config_object=None,start_scheduler=True):
     def home():
         from flask import redirect,url_for
         return redirect(url_for("shares.dashboard" if current_user.is_authenticated else "auth.login"))
+    @app.get("/client")
+    def desktop_client():
+        return render_template("receiver/browser.html",initial_url=request.args.get("url",request.host_url))
     @app.get("/cron/sweep")
     def cron_sweep():
         # Vercel Cron calls this with "Authorization: Bearer <CRON_SECRET>".
@@ -62,15 +65,28 @@ def create_app(config_object=None,start_scheduler=True):
         blob_media=" https://*.private.blob.vercel-storage.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
         blob_api=" https://vercel.com" if app.config["STORAGE_BACKEND"]=="blob" else ""
         resp.headers.setdefault("Content-Security-Policy",f"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'{blob_media}; connect-src 'self'{blob_api}; frame-src 'self'; object-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'")
-        if request.path.startswith(("/s/","/v/")): resp.headers["Cache-Control"]="no-store, max-age=0"; resp.headers["Pragma"]="no-cache"
+        if request.path.startswith(("/s/","/v/","/client")): resp.headers["Cache-Control"]="no-store, max-age=0"; resp.headers["Pragma"]="no-cache"
         return resp
     with app.app_context():
         db.create_all()
         from sqlalchemy import inspect, text
         # create_all does not add columns to existing tables
-        for table,column,ddl in (("share","protection","VARCHAR(10) NOT NULL DEFAULT 'browser'"),("stored_file","blob_path","VARCHAR(300)")):
+        for table,column,ddl in (
+            ("share","protection","VARCHAR(15) NOT NULL DEFAULT 'browser'"),
+            ("stored_file","blob_path","VARCHAR(300)"),
+            ("access_log","client_type","VARCHAR(20)"),
+            ("access_log","app_version","VARCHAR(30)"),
+            ("access_log","platform","VARCHAR(20)"),
+            ("access_log","device","VARCHAR(120)"),
+        ):
             if column not in {c["name"] for c in inspect(db.engine).get_columns(table)}:
                 db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")); db.session.commit()
+        # Migrate legacy "app" protection rows to "app_windows"
+        try:
+            db.session.execute(text("UPDATE share SET protection = 'app_windows' WHERE protection = 'app'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         from .cleanup import sweep
         sweep(app)
     if start_scheduler:
